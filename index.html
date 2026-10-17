@@ -90,8 +90,10 @@
       }
 
       .grid-view .badge-reserve {
-        font-size: 8px;
-        padding: 1px 4px;
+          font-size: 18px !important;
+          font-weight: 700 !important;
+          line-height: 1.4 !important;
+          padding: 3px 6px;
       }
 
       .grid-view {
@@ -396,6 +398,24 @@
           transform: rotate(360deg);
         }
       }
+      
+
+      /* ขนาดป้ายราคาในมุมมองตาราง */
+      #content.grid-view .badge-reserve {
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          padding: 2px 4px !important;
+          line-height: 1.4 !important;
+      }
+
+      /* ขนาดป้ายราคาในมุมมองรายการที่เปิดด้วยปุ่มสลับเมนู */
+      #content.list-view .badge-reserve {
+          font-size: 18px !important;
+          font-weight: 700 !important;
+          padding: 4px 8px !important;
+          line-height: 1.4 !important;
+      }
+
     </style>
   </head>
 
@@ -541,13 +561,13 @@
           <!-- ส่วนหมายเหตุเพิ่มเติม (แสดงทุกรายการ) -->
           <div id="additionalContainer" class="mb-4">
             <label class="font-bold text-gray-800 block mb-2"
-              >หมายเหตุเพิ่มเติม</label
+              >อื่นๆเพิ่มเติม(ถ้ามี)</label
             >
             <textarea
               id="additionalDetail"
               rows="3"
               class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="ระบุหมายเหตุเพิ่มเติม เช่น เสียตรงส่วนไหน, มีเสียงผิดปกติ ฯลฯ"
+              placeholder="ระบุรายละเอียดเพิ่มเติม(ถ้ามี)"
             ></textarea>
           </div>
 
@@ -1115,7 +1135,7 @@
 
         if (cart.length > 0) {
           const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
-          footerText.innerText = `รอส่ง: ${totalQty} รายการ`;
+          footerText.innerText = `รอส่งเข้าครัว: ${totalQty} รายการ`;
           footerIcon.className = "fas fa-shopping-basket";
           confirmBtnArea.classList.remove("hidden");
           confirmBtnArea.classList.add("flex");
