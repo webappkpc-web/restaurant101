@@ -398,7 +398,6 @@
           transform: rotate(360deg);
         }
       }
-      
 
       /* ขนาดป้ายราคาในมุมมองตาราง */
       #content.grid-view .badge-reserve {
@@ -472,7 +471,7 @@
         </div>
 
         <button
-          onclick="callStaff()"
+          onclick="openCallStaffChoice()"
           class="text-lg active:scale-90 transition"
         >
           🔔
@@ -517,6 +516,44 @@
           <i class="fas fa-chevron-right text-[10px]"></i>
         </div>
       </footer>
+    </div>
+
+    <!-- Modal เลือก: เรียกพนักงาน / เรียกสรุปยอด -->
+    <div
+      id="callStaffChoiceModal"
+      class="modal-overlay"
+      onclick="closeCallStaffChoice(event)"
+    >
+      <div
+        class="modal-container p-6 text-center"
+        onclick="event.stopPropagation()"
+      >
+        <div class="text-4xl mb-3">🔔</div>
+        <h2 class="text-lg font-bold mb-4">ต้องการให้เราช่วยอะไรดี?</h2>
+
+        <div class="flex flex-col gap-3">
+          <button
+            onclick="chooseCallStaff();"
+            class="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow hover:bg-blue-700 active:scale-95 transition flex items-center justify-center gap-2"
+          >
+            <i class="fa-solid fa-bell"></i> เรียกพนักงาน
+          </button>
+
+          <button
+            onclick="chooseCheckBill();"
+            class="w-full py-3 bg-green-600 text-white font-bold rounded-xl shadow hover:bg-green-700 active:scale-95 transition flex items-center justify-center gap-2"
+          >
+            <i class="fa-solid fa-receipt"></i> เรียกสรุปยอด (เช็คบิล)
+          </button>
+
+          <button
+            onclick="closeCallStaffChoice()"
+            class="w-full py-2 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition"
+          >
+            ยกเลิก
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal รายละเอียดอาหาร -->
@@ -1572,6 +1609,30 @@ async function viewAllOrders() {
         }, 3000);
       }
 
+      // ==================== เลือก: เรียกพนักงาน / เรียกสรุปยอด ====================
+      function openCallStaffChoice() {
+        document.getElementById("callStaffChoiceModal").classList.add("active");
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeCallStaffChoice(e) {
+        if (e && e.target !== e.currentTarget) return;
+        document.getElementById("callStaffChoiceModal").classList.remove("active");
+        document.body.style.overflow = "";
+      }
+
+      // เลือก "เรียกพนักงาน" -> เรียก callStaff() ตามเดิม
+      async function chooseCallStaff() {
+        closeCallStaffChoice();
+        await callStaff();
+      }
+
+      // เลือก "เรียกสรุปยอด (เช็คบิล)" -> เปิด billModal เหมือนกด viewBill()
+      async function chooseCheckBill() {
+        closeCallStaffChoice();
+        await viewBill();
+      }
+
       function closeBell(e) {
         if (!e || e.target === e.currentTarget) {
           document.getElementById("bellModal").classList.remove("active");
@@ -1667,6 +1728,10 @@ async function viewAllOrders() {
       window.viewBill = viewBill;
       window.confirmBill = confirmBill;
       window.callStaff = callStaff;
+      window.openCallStaffChoice = openCallStaffChoice;
+      window.closeCallStaffChoice = closeCallStaffChoice;
+      window.chooseCallStaff = chooseCallStaff;
+      window.chooseCheckBill = chooseCheckBill;
       window.closeYourOrders = closeYourOrders;
       window.closeBill = closeBill;
       window.closeBell = closeBell;
