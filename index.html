@@ -89,6 +89,31 @@
         pointer-events: none;
       }
 
+      .badge-recommend {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        background-color: #f97316;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        z-index: 5;
+        pointer-events: none;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      #content.grid-view .badge-recommend {
+        font-size: 10px !important;
+        padding: 2px 5px !important;
+      }
+
+      #content.list-view .badge-recommend {
+        font-size: 14px !important;
+        padding: 3px 8px !important;
+      }
+      
       .grid-view .badge-reserve {
           font-size: 18px !important;
           font-weight: 700 !important;
@@ -952,9 +977,13 @@
               img: d.url || d.image || "https://via.placeholder.com/200?text=No+Image",
               desc: d.description || d.desc || d.option || "",
               option: d.option || "",
+              recommend: d.recommend === true,
             };
           });
 
+          // 2. นำมา sort ตรงนี้ทันที เพื่อจัดระเบียบข้อมูลก่อนนำไปแสดงผล
+          data.sort((a, b) => (b.recommend ? 1 : 0) - (a.recommend ? 1 : 0));
+          
           const categories = [
             "ทุกเมนู",
             ...new Set(data.map((item) => item.category || "อื่นๆ")),
@@ -999,29 +1028,35 @@
           return;
         }
 
-        filtered.forEach((item, index) => {
-          const card = document.createElement("div");
-          card.className =
-            "card bg-white border rounded-lg overflow-hidden shadow-sm animate-fadeIn flex flex-col h-full";
+filtered.forEach((item, index) => {
+  const card = document.createElement("div");
+  card.className =
+    "card bg-white border rounded-lg overflow-hidden shadow-sm animate-fadeIn flex flex-col h-full";
 
-          const cardQtyId = `card-qty-${index}`;
-          const cardDesc = (item.desc || "").split("\n")[0];
+  const cardQtyId = `card-qty-${index}`;
+  const cardDesc = (item.desc || "").split("\n")[0];
 
-          card.innerHTML = `
-                    <div class="image-container" onclick="openModal(${index})"> 
-                        <img src="${item.img}" class="card-img" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
-                        <div class="badge-reserve">${item.base_price} บาท</div>
-                    </div>
-                    
-                    <div class="p-2 flex flex-col flex-grow justify-between"> 
-                        <div onclick="openModal(${index})">
-                            <h3 class="font-bold text-xs truncate text-gray-800 leading-tight">${item.title}</h3>
-                            <p class="text-[10px] text-gray-500 truncate mb-1">${cardDesc}</p>
-                        </div>
-                    </div>
-                `;
-          container.appendChild(card);
-        });
+  // ✅ สร้างป้าย "เมนูแนะนำ" เฉพาะ recommend = true
+  const recommendBadge = item.recommend
+    ? `<div class="badge-recommend">⭐</div>`
+    : "";
+
+  card.innerHTML = `
+            <div class="image-container" onclick="openModal(${index})"> 
+                <img src="${item.img}" class="card-img" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
+                ${recommendBadge}
+                <div class="badge-reserve">${item.base_price} บาท</div>
+            </div>
+            
+            <div class="p-2 flex flex-col flex-grow justify-between"> 
+                <div onclick="openModal(${index})">
+                    <h3 class="font-bold text-xs truncate text-gray-800 leading-tight">${item.title}</h3>
+                    <p class="text-[10px] text-gray-500 truncate mb-1">${cardDesc}</p>
+                </div>
+            </div>
+        `;
+  container.appendChild(card);
+});
       }
 
       switcherBtn.onclick = () => {
