@@ -1038,7 +1038,7 @@ filtered.forEach((item, index) => {
 
   // ✅ สร้างป้าย "เมนูแนะนำ" เฉพาะ recommend = true
   const recommendBadge = item.recommend
-    ? `<div class="badge-recommend">⭐</div>`
+    ? `<div class="badge-recommend">👍</div>`
     : "";
 
   card.innerHTML = `
@@ -1069,27 +1069,39 @@ filtered.forEach((item, index) => {
             : '<i class="fas fa-th-large"></i>';
       };
 
-      function openModal(itemIndex) {
-        const filteredData = currentFilter === "ทุกเมนู"
-          ? data
-          : data.filter((item) => item.category === currentFilter);
-        const item = filteredData[itemIndex];
-        if (!item) return;
+function openModal(itemIndex) {
+  const filteredData = currentFilter === "ทุกเมนู"
+    ? data
+    : data.filter((item) => item.category === currentFilter);
+  const item = filteredData[itemIndex];
+  if (!item) return;
 
-        currentItemData = item;
-        resetModalForm();
+  currentItemData = item;
+  resetModalForm();
 
-        const modal = document.getElementById("detailModal");
-        document.getElementById("modalImg").src = item.img || "https://via.placeholder.com/400?text=No+Image";
-        document.getElementById("modalTitle").innerText = item.title || "ไม่มีชื่อเมนู";
-        document.getElementById("modalDesc").innerHTML = (item.desc || "").replace(/\n/g, "<br>");
-        document.getElementById("basePriceDisplaySimple").style.display = "block";
-        document.getElementById("basePriceValue").innerText = Number(item.base_price || 0).toLocaleString() + " บาท";
-        currentQty = 1;
-        document.getElementById("orderQty").innerText = currentQty;
-        modal.classList.add("active");
-        document.body.style.overflow = "hidden";
-      }
+  const modal = document.getElementById("detailModal");
+  document.getElementById("modalImg").src = item.img || "https://via.placeholder.com/400?text=No+Image";
+  document.getElementById("modalTitle").innerText = item.title || "ไม่มีชื่อเมนู";
+  document.getElementById("modalDesc").innerHTML = (item.desc || "").replace(/\n/g, "<br>");
+  document.getElementById("basePriceDisplaySimple").style.display = "block";
+  document.getElementById("basePriceValue").innerText = Number(item.base_price || 0).toLocaleString() + " บาท";
+
+  // ✅ เพิ่ม/ลบป้ายเมนูแนะนำใน modal
+  const existingBadge = document.getElementById("modalRecommendBadge");
+  if (existingBadge) existingBadge.remove();
+  if (item.recommend) {
+    const badge = document.createElement("div");
+    badge.id = "modalRecommendBadge";
+    badge.className = "absolute top-3 left-3 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md z-10";
+    badge.innerText = "👍 เมนูแนะนำ";
+    document.querySelector("#detailModal .relative").appendChild(badge);
+  }
+
+  currentQty = 1;
+  document.getElementById("orderQty").innerText = currentQty;
+  modal.classList.add("active");
+  document.body.style.overflow = "hidden";
+}
 
       function closeModal() {
         const modal = document.getElementById("detailModal");
