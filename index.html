@@ -153,10 +153,10 @@
 
       .fab {
         position: absolute;
-        bottom: 70px;
+        bottom: 50px;
         right: 16px;
-        width: 56px;
-        height: 56px;
+        width: 40px;
+        height: 40px;
         background-color: #2563eb;
         color: white;
         border-radius: 50%;
@@ -519,8 +519,9 @@
         </div>
       </div>
 
-      <button class="fab" id="viewSwitcher" title="สลับมุมมอง">
-        <i class="fas fa-list-ul"></i>
+      <!-- ปุ่มลอยสำหรับค้นหาอาหาร -->
+      <button class="fab" id="searchBtn" onclick="openSearchModal()" title="ค้นหารายการอาหาร">
+        <i class="fas fa-search"></i>
       </button>
 
       <footer
@@ -575,6 +576,33 @@
           >
             ยกเลิก
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal ค้นหารายการอาหาร -->
+    <div id="searchModal" class="modal-overlay" onclick="closeSearchModalOnOverlay(event)">
+      <div class="modal-container p-4" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-bold">🔍 ค้นหารายการอาหาร</h2>
+          <button onclick="closeSearchModal()" class="text-gray-500 hover:text-gray-700 p-1">
+            <i class="fas fa-times text-lg"></i>
+          </button>
+        </div>
+        
+        <div class="relative mb-3">
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="พิมพ์ชื่อเมนูที่ต้องการค้นหา..."
+            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm pl-10 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            oninput="handleSearchInput(this.value)"
+          />
+          <i class="fas fa-search absolute left-3.5 top-3.5 text-gray-400 text-sm"></i>
+        </div>
+
+        <div id="searchResultList" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+          <p class="text-center text-gray-400 py-6 text-sm">พิมพ์ชื่อเมนูเพื่อค้นหา...</p>
         </div>
       </div>
     </div>
@@ -845,7 +873,6 @@
       </div>
     </div>
 
-    
     <div
       id="confirmBillModal"
       class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
@@ -931,7 +958,6 @@
 
       const container = document.getElementById("content");
       const categoryBar = document.getElementById("categoryBar");
-      const switcherBtn = document.getElementById("viewSwitcher");
 
       const urlParams = new URLSearchParams(window.location.search);
       let table = urlParams.get("table");
@@ -976,14 +1002,12 @@
             };
           }).filter(c => c.name).sort((a, b) => a.priority - b.priority);
 
-          // สร้างรายชื่อหมวดหมู่ที่ถูกต้องเพื่อตรวจสอบ
           const validCategoryNames = categoriesData.map(c => c.name);
 
           data = snapshot.docs.map((doc) => {
             const d = doc.data();
             const rawCat = d.menu_category || d.device_section || "";
             
-            // ✅ ถ้าไม่ได้กำหนดหมวดหมู่ หรือหมวดหมู่ไม่มีอยู่ใน collection category ให้ไปอยู่ "อื่นๆ"
             const finalCat = (rawCat && validCategoryNames.includes(rawCat)) ? rawCat : "อื่นๆ";
 
             return {
@@ -1002,9 +1026,8 @@
           categoriesData.forEach(cat => {
             priorityMap[cat.name] = cat.priority;
           });
-          priorityMap["อื่นๆ"] = 9999; // กำหนดให้ "อื่นๆ" อยู่ท้ายสุด
+          priorityMap["อื่นๆ"] = 9999;
 
-          // จัดเรียงรายการอาหาร: เมนูแนะนำขึ้นก่อน ตามด้วย priority ของหมวดหมู่
           data.sort((a, b) => {
             if (a.recommend && !b.recommend) return -1;
             if (!a.recommend && b.recommend) return 1;
@@ -1023,7 +1046,6 @@
             }
           });
           
-          // ถ้ามีสินค้าที่อยู่ในหมวด "อื่นๆ" ให้เพิ่มปุ่ม "อื่นๆ" ต่อท้าย
           if (activeCategories.includes("อื่นๆ") && !sortedCategories.includes("อื่นๆ")) {
             sortedCategories.push("อื่นๆ");
           }
@@ -1078,14 +1100,14 @@
             : "";
 
           card.innerHTML = `
-            <div class="image-container" onclick="openModal(${index})"> 
+            <div class="image-container" onclick="openModalByItemData('${item.id}')"> 
                 <img src="${item.img}" class="card-img" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
                 ${recommendBadge}
                 <div class="badge-reserve">${item.base_price} บาท</div>
             </div>
             
             <div class="p-2 flex flex-col flex-grow justify-between"> 
-                <div onclick="openModal(${index})">
+                <div onclick="openModalByItemData('${item.id}')">
                     <h3 class="font-bold text-xs truncate text-gray-800 leading-tight">${item.title}</h3>
                     <p class="text-[10px] text-gray-500 truncate mb-1">${cardCardDesc}</p>
                 </div>
@@ -1095,23 +1117,22 @@
         });
       }
 
-      switcherBtn.onclick = () => {
-        currentView = currentView === "grid" ? "list" : "grid";
-        container.className =
-          currentView === "grid" ? "grid-view" : "list-view";
-        switcherBtn.innerHTML =
-          currentView === "grid"
-            ? '<i class="fas fa-list-ul"></i>'
-            : '<i class="fas fa-th-large"></i>';
-      };
-
       function openModal(itemIndex) {
         const filteredData = currentFilter === "ทุกเมนู"
           ? data
           : data.filter((item) => item.category === currentFilter);
         const item = filteredData[itemIndex];
         if (!item) return;
+        showItemModal(item);
+      }
 
+      function openModalByItemData(itemId) {
+        const item = data.find(d => d.id === itemId);
+        if (!item) return;
+        showItemModal(item);
+      }
+
+      function showItemModal(item) {
         currentItemData = item;
         resetModalForm();
 
@@ -1136,6 +1157,77 @@
         document.getElementById("orderQty").innerText = currentQty;
         modal.classList.add("active");
         document.body.style.overflow = "hidden";
+      }
+
+      // ฟังก์ชันควบคุม Search Modal
+      function openSearchModal() {
+        const modal = document.getElementById("searchModal");
+        modal.classList.add("active");
+        document.body.style.overflow = "hidden";
+        setTimeout(() => {
+          const input = document.getElementById("searchInput");
+          if (input) {
+            input.value = "";
+            input.focus();
+          }
+          document.getElementById("searchResultList").innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">พิมพ์ชื่อเมนูเพื่อค้นหา...</p>';
+        }, 100);
+      }
+
+      function closeSearchModal() {
+        const modal = document.getElementById("searchModal");
+        modal.classList.remove("active");
+        document.body.style.overflow = "";
+      }
+
+      function closeSearchModalOnOverlay(event) {
+        if (event.target === event.currentTarget) {
+          closeSearchModal();
+        }
+      }
+
+      function handleSearchInput(keyword) {
+        const listContainer = document.getElementById("searchResultList");
+        const queryText = keyword.trim().toLowerCase();
+
+        if (!queryText) {
+          listContainer.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">พิมพ์ชื่อเมนูเพื่อค้นหา...</p>';
+          return;
+        }
+
+        const matchedItems = data.filter(item => 
+          (item.title && item.title.toLowerCase().includes(queryText)) ||
+          (item.desc && item.desc.toLowerCase().includes(queryText))
+        );
+
+        if (matchedItems.length === 0) {
+          listContainer.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">ไม่พบเมนูที่ค้นหา</p>';
+          return;
+        }
+
+        listContainer.innerHTML = "";
+        matchedItems.forEach(item => {
+          const row = document.createElement("div");
+          row.className = "flex items-center justify-between bg-gray-50 p-2.5 rounded-xl border border-gray-100 hover:bg-blue-50/50 cursor-pointer transition";
+          row.onclick = () => {
+            closeSearchModal();
+            openModalByItemData(item.id);
+          };
+
+          row.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0">
+              <img src="${item.img}" class="w-12 h-12 object-cover rounded-lg flex-shrink-0" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
+              <div class="min-w-0">
+                <div class="font-bold text-sm text-gray-800 truncate">${item.title}</div>
+                <div class="text-xs text-gray-500 truncate">${item.category} • ${item.base_price} บาท</div>
+              </div>
+            </div>
+            <div class="text-blue-600 pl-2">
+              <i class="fas fa-chevron-right text-xs"></i>
+            </div>
+          `;
+          listContainer.appendChild(row);
+        });
       }
 
       function closeModal() {
@@ -1773,6 +1865,11 @@
       }
 
       window.openModal = openModal;
+      window.openModalByItemData = openModalByItemData;
+      window.openSearchModal = openSearchModal;
+      window.closeSearchModal = closeSearchModal;
+      window.closeSearchModalOnOverlay = closeSearchModalOnOverlay;
+      window.handleSearchInput = handleSearchInput;
       window.closeModal = closeModal;
       window.closeModalOnOverlay = closeModalOnOverlay;
       window.updateQty = updateQty;
