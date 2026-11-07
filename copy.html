@@ -89,6 +89,31 @@
         pointer-events: none;
       }
 
+      .badge-recommend {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        background-color: #f97316;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        z-index: 5;
+        pointer-events: none;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      #content.grid-view .badge-recommend {
+        font-size: 10px !important;
+        padding: 2px 5px !important;
+      }
+
+      #content.list-view .badge-recommend {
+        font-size: 14px !important;
+        padding: 3px 8px !important;
+      }
+      
       .grid-view .badge-reserve {
           font-size: 18px !important;
           font-weight: 700 !important;
@@ -399,7 +424,6 @@
         }
       }
 
-      /* ขนาดป้ายราคาในมุมมองตาราง */
       #content.grid-view .badge-reserve {
           font-size: 12px !important;
           font-weight: 600 !important;
@@ -407,7 +431,6 @@
           line-height: 1.4 !important;
       }
 
-      /* ขนาดป้ายราคาในมุมมองรายการที่เปิดด้วยปุ่มสลับเมนู */
       #content.list-view .badge-reserve {
           font-size: 18px !important;
           font-weight: 700 !important;
@@ -896,6 +919,7 @@
       window.serverTimestamp = serverTimestamp;
 
       let data = [];
+      let categoriesData = []; 
       let currentFilter = "ทุกเมนู";
       let currentView = "grid";
       let currentItemData = null;
@@ -903,14 +927,12 @@
       let cart = [];
       let cardQuantities = {};
       let cookingNotified = false;
-            let currentAdditionalDetail = "";
-      
+      let currentAdditionalDetail = "";
 
       const container = document.getElementById("content");
       const categoryBar = document.getElementById("categoryBar");
       const switcherBtn = document.getElementById("viewSwitcher");
 
-      // อ่านค่า table จาก URL เช่น ?table=A1
       const urlParams = new URLSearchParams(window.location.search);
       let table = urlParams.get("table");
 
@@ -940,27 +962,73 @@
 
       async function loadData() {
         try {
-          const snapshot = await getDocs(collection(db, "devices"));
+          const [snapshot, categorySnapshot] = await Promise.all([
+            getDocs(collection(db, "devices")),
+            getDocs(collection(db, "category"))
+          ]);
 
-          data = snapshot.docs.map((doc) => {
+          categoriesData = categorySnapshot.docs.map(doc => {
             const d = doc.data();
             return {
               id: doc.id,
+              name: d.category_name || "",
+              priority: Number(d.priority) || 999
+            };
+          }).filter(c => c.name).sort((a, b) => a.priority - b.priority);
+
+          // สร้างรายชื่อหมวดหมู่ที่ถูกต้องเพื่อตรวจสอบ
+          const validCategoryNames = categoriesData.map(c => c.name);
+
+          data = snapshot.docs.map((doc) => {
+            const d = doc.data();
+            const rawCat = d.menu_category || d.device_section || "";
+            
+            // ✅ ถ้าไม่ได้กำหนดหมวดหมู่ หรือหมวดหมู่ไม่มีอยู่ใน collection category ให้ไปอยู่ "อื่นๆ"
+            const finalCat = (rawCat && validCategoryNames.includes(rawCat)) ? rawCat : "อื่นๆ";
+
+            return {
+              id: doc.id,
               title: d.menu_name || d.device_name || "ไม่มีชื่อเมนู",
-              category: d.menu_category || d.device_section || "อื่นๆ",
-              base_price: Number(d.base_price) || Number(d.price) || 0, // รองรับทั้ง base_price และ price
+              category: finalCat,
+              base_price: Number(d.base_price) || Number(d.price) || 0,
               img: d.url || d.image || "https://via.placeholder.com/200?text=No+Image",
               desc: d.description || d.desc || d.option || "",
               option: d.option || "",
+              recommend: d.recommend === true,
             };
           });
 
-          const categories = [
-            "ทุกเมนู",
-            ...new Set(data.map((item) => item.category || "อื่นๆ")),
-          ];
+          const priorityMap = {};
+          categoriesData.forEach(cat => {
+            priorityMap[cat.name] = cat.priority;
+          });
+          priorityMap["อื่นๆ"] = 9999; // กำหนดให้ "อื่นๆ" อยู่ท้ายสุด
 
-          renderCategoryButtons(categories);
+          // จัดเรียงรายการอาหาร: เมนูแนะนำขึ้นก่อน ตามด้วย priority ของหมวดหมู่
+          data.sort((a, b) => {
+            if (a.recommend && !b.recommend) return -1;
+            if (!a.recommend && b.recommend) return 1;
+
+            const pA = priorityMap[a.category] ?? 9999;
+            const pB = priorityMap[b.category] ?? 9999;
+            return pA - pB;
+          });
+          
+          const activeCategories = [...new Set(data.map(item => item.category))];
+          const sortedCategories = ["ทุกเมนู"];
+          
+          categoriesData.forEach(cat => {
+            if (activeCategories.includes(cat.name)) {
+              sortedCategories.push(cat.name);
+            }
+          });
+          
+          // ถ้ามีสินค้าที่อยู่ในหมวด "อื่นๆ" ให้เพิ่มปุ่ม "อื่นๆ" ต่อท้าย
+          if (activeCategories.includes("อื่นๆ") && !sortedCategories.includes("อื่นๆ")) {
+            sortedCategories.push("อื่นๆ");
+          }
+
+          renderCategoryButtons(sortedCategories);
           filterData("ทุกเมนู");
         } catch (error) {
           console.error("Error:", error);
@@ -1004,22 +1072,25 @@
           card.className =
             "card bg-white border rounded-lg overflow-hidden shadow-sm animate-fadeIn flex flex-col h-full";
 
-          const cardQtyId = `card-qty-${index}`;
-          const cardDesc = (item.desc || "").split("\n")[0];
+          const cardCardDesc = (item.desc || "").split("\n")[0];
+          const recommendBadge = item.recommend
+            ? `<div class="badge-recommend">👍</div>`
+            : "";
 
           card.innerHTML = `
-                    <div class="image-container" onclick="openModal(${index})"> 
-                        <img src="${item.img}" class="card-img" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
-                        <div class="badge-reserve">${item.base_price} บาท</div>
-                    </div>
-                    
-                    <div class="p-2 flex flex-col flex-grow justify-between"> 
-                        <div onclick="openModal(${index})">
-                            <h3 class="font-bold text-xs truncate text-gray-800 leading-tight">${item.title}</h3>
-                            <p class="text-[10px] text-gray-500 truncate mb-1">${cardDesc}</p>
-                        </div>
-                    </div>
-                `;
+            <div class="image-container" onclick="openModal(${index})"> 
+                <img src="${item.img}" class="card-img" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
+                ${recommendBadge}
+                <div class="badge-reserve">${item.base_price} บาท</div>
+            </div>
+            
+            <div class="p-2 flex flex-col flex-grow justify-between"> 
+                <div onclick="openModal(${index})">
+                    <h3 class="font-bold text-xs truncate text-gray-800 leading-tight">${item.title}</h3>
+                    <p class="text-[10px] text-gray-500 truncate mb-1">${cardCardDesc}</p>
+                </div>
+            </div>
+        `;
           container.appendChild(card);
         });
       }
@@ -1050,6 +1121,17 @@
         document.getElementById("modalDesc").innerHTML = (item.desc || "").replace(/\n/g, "<br>");
         document.getElementById("basePriceDisplaySimple").style.display = "block";
         document.getElementById("basePriceValue").innerText = Number(item.base_price || 0).toLocaleString() + " บาท";
+
+        const existingBadge = document.getElementById("modalRecommendBadge");
+        if (existingBadge) existingBadge.remove();
+        if (item.recommend) {
+          const badge = document.createElement("div");
+          badge.id = "modalRecommendBadge";
+          badge.className = "absolute top-3 left-3 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md z-10";
+          badge.innerText = "👍 เมนูแนะนำ";
+          document.querySelector("#detailModal .relative").appendChild(badge);
+        }
+
         currentQty = 1;
         document.getElementById("orderQty").innerText = currentQty;
         modal.classList.add("active");
@@ -1072,7 +1154,6 @@
         currentQty += amount;
         if (currentQty < 1) currentQty = 1;
         document.getElementById("orderQty").innerText = currentQty;
-        updateDisplayPrice(); // ✅ เพิ่มบรรทัดนี้
       }
 
       function confirmOrder() {
@@ -1120,12 +1201,11 @@
           const itemRow = document.createElement("div");
           itemRow.className =
             "flex flex-col bg-gray-50 p-3 rounded-xl border border-gray-100 mb-2";
-          // แสดงตัวเลือก/หมายเหตุ
+          
           const optionHtml = item.option && item.option.trim() !== ""
             ? `<div class="text-xs text-orange-600 mt-1">🍽️ ตัวเลือก: ${item.option}</div>`
             : "";
 
-          // แสดงหมายเหตุเพิ่มเติม (ถ้ามีข้อความ)
           const detailHtml =
             item.additionalDetail && item.additionalDetail.trim() !== ""
               ? `<div class="text-xs text-gray-500 mt-1">📝 ${item.additionalDetail.substring(
@@ -1249,8 +1329,8 @@
               title: item.title,
               qty: item.qty,
               price: Number(item.price) || 0,
-              additionalDetail: item.additionalDetail || "", // บันทึกหมายเหตุเพิ่มเติม
-              option: item.option || "", // ตัวเลือก/หมายเหตุอาหาร
+              additionalDetail: item.additionalDetail || "",
+              option: item.option || "",
               status: "pending",
               createdAt: serverTimestamp(),
             });
@@ -1270,15 +1350,6 @@
           spinner.classList.add("hidden");
           hideLoadingOverlay();
         }
-      }
-
-      function updateCardQty(index, amount, event) {
-        event.stopPropagation();
-        if (!cardQuantities[index]) cardQuantities[index] = 1;
-        cardQuantities[index] += amount;
-        if (cardQuantities[index] < 1) cardQuantities[index] = 1;
-        const qtyElement = document.getElementById(`card-qty-${index}`);
-        if (qtyElement) qtyElement.innerText = cardQuantities[index];
       }
 
       function showLoadingOverlay() {
@@ -1324,106 +1395,102 @@
         }
       });
 
-async function viewYourOrders() {
-  const modal = document.getElementById("yourOrdersModal");
-  const list = document.getElementById("yourOrdersList");
+      async function viewYourOrders() {
+        const modal = document.getElementById("yourOrdersModal");
+        const list = document.getElementById("yourOrdersList");
 
-  document.getElementById("orderTitle").innerText = "📋 รายการของคุณ";
-  document.getElementById("orderTable").innerText = table;
-  document.getElementById("orderSession").innerText = sessionId;
+        document.getElementById("orderTitle").innerText = "📋 รายการของคุณ";
+        document.getElementById("orderTable").innerText = table;
+        document.getElementById("orderSession").innerText = sessionId;
 
-  list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
-  modal.classList.add("active");
+        list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
+        modal.classList.add("active");
 
-  try {
-    // ✅ ดึงเฉพาะ table (equality เดียว ไม่ต้องใช้ composite index)
-    const q = query(collection(db, "orders"), where("table", "==", table));
-    const snapshot = await getDocs(q);
+        try {
+          const q = query(collection(db, "orders"), where("table", "==", table));
+          const snapshot = await getDocs(q);
 
-    // ✅ กรอง sessionId + เรียงใหม่สุดก่อน ฝั่ง client
-    const orders = snapshot.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((o) => o.sessionId === sessionId)
-      .sort(
-        (a, b) =>
-          (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)
-      );
+          const orders = snapshot.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((o) => o.sessionId === sessionId)
+            .sort(
+              (a, b) =>
+                (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)
+            );
 
-    if (orders.length === 0) {
-      list.innerHTML =
-        "<p class='text-center text-gray-400 py-4'>ยังไม่มีรายการ</p>";
-      return;
-    }
+          if (orders.length === 0) {
+            list.innerHTML =
+              "<p class='text-center text-gray-400 py-4'>ยังไม่มีรายการ</p>";
+            return;
+          }
 
-    list.innerHTML = "";
-    orders.forEach((item) => {
-      const row = document.createElement("div");
-      row.className = "flex justify-between bg-gray-50 p-2 rounded mb-2";
-      row.innerHTML = `
-        <div>
-          <div class="font-medium">${item.title ?? "-"}</div>
-          <div class="text-xs ${getStatusColor(item.status)}">${getStatusLabel(item.status)}</div>
-        </div>
-        <div class="font-bold">x${item.qty ?? 0}</div>
-      `;
-      list.appendChild(row);
-    });
-  } catch (err) {
-    console.error("viewYourOrders error:", err);
-    list.innerHTML = `<p class='text-red-500 text-center py-4 text-xs break-all'>โหลดไม่สำเร็จ: ${err.code || ""} ${err.message}</p>`;
-  }
-}
+          list.innerHTML = "";
+          orders.forEach((item) => {
+            const row = document.createElement("div");
+            row.className = "flex justify-between bg-gray-50 p-2 rounded mb-2";
+            row.innerHTML = `
+              <div>
+                <div class="font-medium">${item.title ?? "-"}</div>
+                <div class="text-xs ${getStatusColor(item.status)}">${getStatusLabel(item.status)}</div>
+              </div>
+              <div class="font-bold">x${item.qty ?? 0}</div>
+            `;
+            list.appendChild(row);
+          });
+        } catch (err) {
+          console.error("viewYourOrders error:", err);
+          list.innerHTML = `<p class='text-red-500 text-center py-4 text-xs break-all'>โหลดไม่สำเร็จ: ${err.code || ""} ${err.message}</p>`;
+        }
+      }
 
-async function viewAllOrders() {
-  const modal = document.getElementById("yourOrdersModal");
-  const list = document.getElementById("yourOrdersList");
+      async function viewAllOrders() {
+        const modal = document.getElementById("yourOrdersModal");
+        const list = document.getElementById("yourOrdersList");
 
-  document.getElementById("orderTitle").innerText = "📋 รายการอาหารทั้งโต๊ะ";
-  document.getElementById("orderTable").innerText = table;
-  document.getElementById("orderSession").innerText = "ทั้งหมด";
+        document.getElementById("orderTitle").innerText = "📋 รายการอาหารทั้งโต๊ะ";
+        document.getElementById("orderTable").innerText = table;
+        document.getElementById("orderSession").innerText = "ทั้งหมด";
 
-  list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
-  modal.classList.add("active");
+        list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
+        modal.classList.add("active");
 
-  try {
-    // ✅ ตัด orderBy ออก -> ไม่ต้องใช้ composite index
-    const q = query(collection(db, "orders"), where("table", "==", table));
-    const snapshot = await getDocs(q);
+        try {
+          const q = query(collection(db, "orders"), where("table", "==", table));
+          const snapshot = await getDocs(q);
 
-    if (snapshot.empty) {
-      list.innerHTML =
-        "<p class='text-center text-gray-400 py-4'>ยังไม่มีรายการ</p>";
-      return;
-    }
+          if (snapshot.empty) {
+            list.innerHTML =
+              "<p class='text-center text-gray-400 py-4'>ยังไม่มีรายการ</p>";
+            return;
+          }
 
-    // ✅ เรียงใหม่สุดก่อน ฝั่ง client
-    const orders = snapshot.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .sort(
-        (a, b) =>
-          (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)
-      );
+          const orders = snapshot.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort(
+              (a, b) =>
+                (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)
+            );
 
-    list.innerHTML = "";
-    orders.forEach((item) => {
-      const row = document.createElement("div");
-      row.className = "flex justify-between bg-gray-50 p-2 rounded mb-2";
-      row.innerHTML = `
-        <div>
-          <div class="font-medium">${item.title ?? "-"}</div>
-          <div class="text-xs text-gray-500">ผู้ใช้: ${item.sessionId ?? "-"}</div>
-          <div class="text-xs ${getStatusColor(item.status)}">${getStatusLabel(item.status)}</div>
-        </div>
-        <div class="font-bold">x${item.qty ?? 0}</div>
-      `;
-      list.appendChild(row);
-    });
-  } catch (err) {
-    console.error("viewAllOrders error:", err);
-    // ✅ โชว์ error จริงบนจอ จะได้ debug ง่าย
-    list.innerHTML = `<p class='text-red-500 text-center py-4 text-xs break-all'>โหลดไม่สำเร็จ: ${err.code || ""} ${err.message}</p>`;
-  }
-}
+          list.innerHTML = "";
+          orders.forEach((item) => {
+            const row = document.createElement("div");
+            row.className = "flex justify-between bg-gray-50 p-2 rounded mb-2";
+            row.innerHTML = `
+              <div>
+                <div class="font-medium">${item.title ?? "-"}</div>
+                <div class="text-xs text-gray-500">ผู้ใช้: ${item.sessionId ?? "-"}</div>
+                <div class="text-xs ${getStatusColor(item.status)}">${getStatusLabel(item.status)}</div>
+              </div>
+              <div class="font-bold">x${item.qty ?? 0}</div>
+            `;
+            list.appendChild(row);
+          });
+        } catch (err) {
+          console.error("viewAllOrders error:", err);
+          list.innerHTML = `<p class='text-red-500 text-center py-4 text-xs break-all'>โหลดไม่สำเร็จ: ${err.code || ""} ${err.message}</p>`;
+        }
+      }
+
       function getStatusLabel(status) {
         switch (status) {
           case "pending":
@@ -1544,7 +1611,6 @@ async function viewAllOrders() {
           loading.classList.add("active");
 
           try {
-            // สร้าง bill record
             await addDoc(collection(db, "bills"), {
               table: table,
               tableCode: tableCode,
@@ -1554,7 +1620,6 @@ async function viewAllOrders() {
               sessionId: sessionId,
             });
 
-            // อัปเดต orders ที่ยังไม่ done เป็น billed (optional)
             const q = query(
               collection(db, "orders"),
               where("table", "==", table),
@@ -1609,7 +1674,6 @@ async function viewAllOrders() {
         }, 3000);
       }
 
-      // ==================== เลือก: เรียกพนักงาน / เรียกสรุปยอด ====================
       function openCallStaffChoice() {
         document.getElementById("callStaffChoiceModal").classList.add("active");
         document.body.style.overflow = "hidden";
@@ -1621,13 +1685,11 @@ async function viewAllOrders() {
         document.body.style.overflow = "";
       }
 
-      // เลือก "เรียกพนักงาน" -> เรียก callStaff() ตามเดิม
       async function chooseCallStaff() {
         closeCallStaffChoice();
         await callStaff();
       }
 
-      // เลือก "เรียกสรุปยอด (เช็คบิล)" -> เปิด billModal เหมือนกด viewBill()
       async function chooseCheckBill() {
         closeCallStaffChoice();
         await viewBill();
@@ -1710,13 +1772,11 @@ async function viewAllOrders() {
         }
       }
 
-      // Bind functions to window (เพิ่ม openModal และอื่นๆ)
       window.openModal = openModal;
       window.closeModal = closeModal;
       window.closeModalOnOverlay = closeModalOnOverlay;
       window.updateQty = updateQty;
       window.confirmOrder = confirmOrder;
-      window.updateCardQty = updateCardQty;
       window.updateCartItemQty = updateCartItemQty;
       window.removeItemFromCart = removeItemFromCart;
       window.showFinalConfirm = showFinalConfirm;
