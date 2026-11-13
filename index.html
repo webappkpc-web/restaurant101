@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ครัวจันทร์เพ็ญ</title>
+    <title>ครัวจันทร์เพ็ญ 13/11</title>
     <base target="_top" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
@@ -456,12 +456,15 @@
 
           <div
             id="userMenu"
-            class="hidden absolute left-0 mt-2 w-64 bg-white text-black rounded-xl shadow-lg p-3 z-50"
+            class="hidden absolute left-0 mt-2 w-72 bg-white text-black rounded-xl shadow-lg p-3 z-50"
           >
             <div class="border-b pb-2 mb-2">
               <div class="font-bold">โต๊ะ: <span id="table"></span></div>
-              <div class="text-sm text-gray-600">
-                ลูกค้า: <span id="session"></span>
+              <div class="text-xs text-gray-500">
+                รอบโต๊ะ: <span id="tableSessionDisplay" class="font-mono text-blue-600">กำลังโหลด...</span>
+              </div>
+              <div class="text-xs text-gray-500">
+                รหัสเครื่องคุณ: <span id="session" class="font-mono"></span>
               </div>
             </div>
 
@@ -780,7 +783,7 @@
         <h2 id="orderTitle" class="text-lg font-bold mb-3">📋 รายการสั่งอาหารโต๊ะของคุณ</h2>
 
         <div class="text-sm text-gray-600 mb-2">
-          โต๊ะ: <span id="orderTable"></span> | ลูกค้า:
+          โต๊ะ: <span id="orderTable"></span> | รหัส:
           <span id="orderSession"></span>
         </div>
 
@@ -802,8 +805,9 @@
       <div class="modal-container p-4" onclick="event.stopPropagation()">
         <h2 class="text-lg font-bold mb-3">💰 รายการอาหารโต๊ะคุณ</h2>
 
-        <div class="text-sm text-gray-600 mb-2">
-          โต๊ะ: <span id="billTable"></span>
+        <div class="text-sm text-gray-600 mb-2 flex justify-between">
+          <span>โต๊ะ: <span id="billTable" class="font-bold"></span></span>
+          <span class="text-xs text-blue-600" id="billSessionText"></span>
         </div>
 
         <div id="billList" class="space-y-2 max-h-60 overflow-y-auto"></div>
@@ -910,6 +914,8 @@
         getFirestore,
         collection,
         getDocs,
+        getDoc,
+        setDoc,
         addDoc,
         query,
         where,
@@ -935,6 +941,8 @@
 
       window.db = db;
       window.getDocs = getDocs;
+      window.getDoc = getDoc;
+      window.setDoc = setDoc;
       window.collection = collection;
       window.addDoc = addDoc;
       window.updateDoc = updateDoc;
@@ -974,12 +982,50 @@
 
       document.getElementById("table").innerText = table;
 
-      let sessionId = localStorage.getItem("session_id");
-      if (!sessionId) {
-        sessionId = Math.random().toString(36).substring(6, 10);
-        localStorage.setItem("session_id", sessionId);
+      // 1. รหัสประจำตัวเครื่องลูกค้าแต่ละคน (User Session ID)
+      let userSessionId = localStorage.getItem("user_session_id");
+      if (!userSessionId) {
+        userSessionId = Math.random().toString(36).substring(2, 6).toUpperCase();
+        localStorage.setItem("user_session_id", userSessionId);
       }
-      document.getElementById("session").innerText = sessionId;
+      document.getElementById("session").innerText = userSessionId;
+
+      // 2. รหัสรอบการใช้งานโต๊ะกลาง (Table Session ID) - ใช้ร่วมกันทั้งโต๊ะ
+      let tableSessionId = null;
+
+      // ฟังก์ชันดึงหรือสร้าง Table Session ID กลางของโต๊ะนั้นๆ
+      async function initTableSession() {
+        try {
+          const tableRef = doc(db, "tables", table);
+          const tableSnap = await getDoc(tableRef);
+
+          if (tableSnap.exists() && tableSnap.data().activeSessionId) {
+            // ถ้าโต๊ะนี้มีรอบที่เปิดใช้งานอยู่แล้ว ให้ดึงรหัสรอบนั้นมาใช้ร่วมกันทั้งโต๊ะ
+            tableSessionId = tableSnap.data().activeSessionId;
+          } else {
+            // ถ้าโต๊ะยังว่าง หรือยังไม่เคยเปิดรอบ ให้สร้างรหัสรอบใหม่
+            const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+            tableSessionId = `${table}-${yyyymmdd}-${randomSuffix}`;
+
+            await setDoc(tableRef, {
+              table: table,
+              activeSessionId: tableSessionId,
+              status: "active",
+              openedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+
+          const displayEl = document.getElementById("tableSessionDisplay");
+          if (displayEl) displayEl.innerText = tableSessionId;
+          return tableSessionId;
+        } catch (err) {
+          console.error("initTableSession error:", err);
+          // Fallback กรณีเชื่อมต่อตาราง tables ไม่ได้
+          tableSessionId = `${table}-${yyyymmdd}-DEFAULT`;
+          return tableSessionId;
+        }
+      }
 
       function resetModalForm() {
         const textarea = document.getElementById("additionalDetail");
@@ -988,6 +1034,9 @@
 
       async function loadData() {
         try {
+          // โหลด Table Session ID ก่อนโหลดเมนู
+          await initTableSession();
+
           const [snapshot, categorySnapshot] = await Promise.all([
             getDocs(collection(db, "devices")),
             getDocs(collection(db, "category"))
@@ -1402,6 +1451,9 @@
       async function sendToKitchen() {
         if (cart.length === 0) return;
 
+        // ตรวจสอบให้แน่ใจว่ามี tableSessionId ล่าสุดเสมอ (ป้องกันกรณีพนักงานเพิ่งเคลียร์โต๊ะระหว่างที่ลูกค้าเปิดหน้าค้างไว้)
+        await initTableSession();
+
         const btn = document.getElementById("sendBtn");
         const text = document.getElementById("sendBtnText");
         const spinner = document.getElementById("sendSpinner");
@@ -1416,7 +1468,9 @@
             await addDoc(collection(db, "orders"), {
               table: table,
               tableCode: tableCode,
-              sessionId: sessionId,
+              tableSessionId: tableSessionId, // รหัสรอบการใช้งานโต๊ะ (ใช้ร่วมกันทั้งโต๊ะ)
+              sessionId: tableSessionId,      // คงฟิลด์เดิมไว้ให้ระบบหลังบ้าน/KDS ที่อาจอ้างอิงฟิลด์นี้ทำงานต่อได้ไม่สะดุด
+              userSessionId: userSessionId,   // รหัสเฉพาะเครื่องลูกค้าที่กดสั่ง
               menuId: item.id,
               title: item.title,
               qty: item.qty,
@@ -1487,24 +1541,30 @@
         }
       });
 
+      // ดูรายการสั่งอาหารเฉพาะเครื่องคุณ (ในรอบโต๊ะปัจจุบัน)
       async function viewYourOrders() {
         const modal = document.getElementById("yourOrdersModal");
         const list = document.getElementById("yourOrdersList");
 
-        document.getElementById("orderTitle").innerText = "📋 รายการของคุณ";
+        await initTableSession();
+
+        document.getElementById("orderTitle").innerText = "📋 รายการสั่งอาหารของคุณ";
         document.getElementById("orderTable").innerText = table;
-        document.getElementById("orderSession").innerText = sessionId;
+        document.getElementById("orderSession").innerText = `เครื่องคุณ (${userSessionId})`;
 
         list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
         modal.classList.add("active");
 
         try {
-          const q = query(collection(db, "orders"), where("table", "==", table));
+          const q = query(
+            collection(db, "orders"),
+            where("tableSessionId", "==", tableSessionId)
+          );
           const snapshot = await getDocs(q);
 
           const orders = snapshot.docs
             .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((o) => o.sessionId === sessionId)
+            .filter((o) => o.userSessionId === userSessionId)
             .sort(
               (a, b) =>
                 (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)
@@ -1535,19 +1595,25 @@
         }
       }
 
+      // ดูรายการสั่งอาหารทั้งหมดของโต๊ะ (เฉพาะรอบโต๊ะปัจจุบัน)
       async function viewAllOrders() {
         const modal = document.getElementById("yourOrdersModal");
         const list = document.getElementById("yourOrdersList");
 
+        await initTableSession();
+
         document.getElementById("orderTitle").innerText = "📋 รายการอาหารทั้งโต๊ะ";
         document.getElementById("orderTable").innerText = table;
-        document.getElementById("orderSession").innerText = "ทั้งหมด";
+        document.getElementById("orderSession").innerText = tableSessionId;
 
         list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
         modal.classList.add("active");
 
         try {
-          const q = query(collection(db, "orders"), where("table", "==", table));
+          const q = query(
+            collection(db, "orders"),
+            where("tableSessionId", "==", tableSessionId)
+          );
           const snapshot = await getDocs(q);
 
           if (snapshot.empty) {
@@ -1565,12 +1631,13 @@
 
           list.innerHTML = "";
           orders.forEach((item) => {
+            const isMe = item.userSessionId === userSessionId ? " (คุณ)" : "";
             const row = document.createElement("div");
             row.className = "flex justify-between bg-gray-50 p-2 rounded mb-2";
             row.innerHTML = `
               <div>
                 <div class="font-medium">${item.title ?? "-"}</div>
-                <div class="text-xs text-gray-500">ผู้ใช้: ${item.sessionId ?? "-"}</div>
+                <div class="text-xs text-gray-500">สั่งโดย: ${item.userSessionId ?? "-"}${isMe}</div>
                 <div class="text-xs ${getStatusColor(item.status)}">${getStatusLabel(item.status)}</div>
               </div>
               <div class="font-bold">x${item.qty ?? 0}</div>
@@ -1591,6 +1658,8 @@
             return "🍳 กำลังเตรียม";
           case "done":
             return "✅ เสิร์ฟแล้ว";
+          case "billed":
+            return "🧾 รอชำระเงิน";
           case "cancelled":
             return "❌ ยกเลิก";
           default:
@@ -1606,6 +1675,8 @@
             return "text-yellow-500";
           case "done":
             return "text-green-500";
+          case "billed":
+            return "text-blue-500";
           case "cancelled":
             return "text-red-500";
           default:
@@ -1615,13 +1686,18 @@
 
       let totalPrice = 0;
 
+      // สรุปรายการอาหารทั้งโต๊ะเพื่อเช็คบิล (ดึงตาม tableSessionId)
       async function viewBill() {
         const modal = document.getElementById("billModal");
         const list = document.getElementById("billList");
         const totalDiv = document.getElementById("billTotal");
         const tableDiv = document.getElementById("billTable");
+        const sessionTextDiv = document.getElementById("billSessionText");
+
+        await initTableSession();
 
         tableDiv.innerText = table;
+        if (sessionTextDiv) sessionTextDiv.innerText = `รอบ: ${tableSessionId}`;
 
         list.innerHTML = '<div class="text-center py-4">กำลังโหลด...</div>';
         modal.classList.add("active");
@@ -1629,7 +1705,7 @@
         try {
           const q = query(
             collection(db, "orders"),
-            where("table", "==", table),
+            where("tableSessionId", "==", tableSessionId),
             where("status", "in", ["pending", "cooking", "done"])
           );
 
@@ -1694,6 +1770,11 @@
       }
 
       async function confirmBill(btn) {
+        if (totalPrice <= 0) {
+          showToast("ไม่มีรายการอาหารสำหรับเช็คบิลครับ", "fa-info-circle", "#f59e0b");
+          return;
+        }
+
         openConfirmBill(async () => {
           closeConfirmBill();
 
@@ -1703,19 +1784,23 @@
           loading.classList.add("active");
 
           try {
+            // 1. บันทึกรายการเรียกเช็คบิลผูกกับ tableSessionId
             await addDoc(collection(db, "bills"), {
               table: table,
               tableCode: tableCode,
+              tableSessionId: tableSessionId,
+              sessionId: tableSessionId,
+              requestedByUser: userSessionId,
               totalPrice: totalPrice,
               status: "requested",
               createdAt: serverTimestamp(),
-              sessionId: sessionId,
             });
 
+            // 2. อัปเดตสถานะออร์เดอร์ทั้งหมดในรอบนี้ (รวมถึง done) ให้เป็น billed
             const q = query(
               collection(db, "orders"),
-              where("table", "==", table),
-              where("status", "in", ["pending", "cooking"])
+              where("tableSessionId", "==", tableSessionId),
+              where("status", "in", ["pending", "cooking", "done"])
             );
             const snapshot = await getDocs(q);
 
@@ -1729,6 +1814,14 @@
               );
             });
 
+            // 3. อัปเดตสถานะโต๊ะใน collection "tables" ว่าเรียกเช็คบิลแล้ว
+            updatePromises.push(
+              updateDoc(doc(db, "tables", table), {
+                status: "bill_requested",
+                updatedAt: serverTimestamp(),
+              })
+            );
+
             await Promise.all(updatePromises);
 
             loading.classList.remove("active");
@@ -1740,7 +1833,7 @@
             showToast("❌ ส่งไม่สำเร็จ", "fa-times-circle", "#dc2626");
           } finally {
             btn.disabled = false;
-            btn.innerText = "สรุป";
+            btn.innerText = "เรียกเช็คบิล";
           }
         });
       }
@@ -1753,7 +1846,9 @@
           await addDoc(collection(db, "callStaff"), {
             table: table,
             tableCode: tableCode,
-            sessionId: sessionId,
+            tableSessionId: tableSessionId,
+            sessionId: tableSessionId,
+            userSessionId: userSessionId,
             createdAt: serverTimestamp(),
             status: "pending",
           });
@@ -1839,10 +1934,11 @@
       }
 
       async function checkCookingStatus() {
+        if (!tableSessionId) return;
         try {
           const q = query(
             collection(db, "orders"),
-            where("table", "==", table),
+            where("tableSessionId", "==", tableSessionId),
             where("status", "==", "cooking")
           );
 
@@ -1898,9 +1994,10 @@
       window.toggleMenu = toggleMenu;
       window.closeUserMenu = closeUserMenu;
 
-      checkCookingStatus();
       setInterval(checkCookingStatus, 60000);
-      loadData();
+      loadData().then(() => {
+        checkCookingStatus();
+      });
     </script>
   </body>
 </html>
